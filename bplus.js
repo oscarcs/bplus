@@ -183,7 +183,7 @@ let bplus = (function() {
      * e-climbing
      */
     function parse(tokens) {
-        
+
         let loc = -1;
         let c;
         function advance() {
@@ -193,7 +193,7 @@ let bplus = (function() {
         }
 
         function lookahead() {
-            return tokens[cur + 1];
+            return tokens[loc + 1];
         }
 
         // Test whether the current symbol is of a particular type.
@@ -222,6 +222,11 @@ let bplus = (function() {
             "-": { precedence: 1, associativity: 'left' },   
             "*": { precedence: 2, associativity: 'left' },   
             "/": { precedence: 2, associativity: 'left' },   
+            "==": { precedence: 4, associativity: 'left' },
+            ">": { precedence: 4, associativity: 'left' },
+            "<": { precedence: 4, associativity: 'left' },
+            ">=": { precedence: 4, associativity: 'left' },
+            "<=": { precedence: 4, associativity: 'left' },
         };
 
         // An 'atom' is the smallest constituent unit of an expression, i.e. 
@@ -292,13 +297,14 @@ let bplus = (function() {
         }
 
         function statement() {
+
+            var s;
+
             // Variable definition:
-            if (accept("let")) {
-                if (!accept("identifier")) {
-                    throw "Expected identifier."
-                }
+            if (accept("LET")) {
 
                 let name = c.symbol;
+                advance();
 
                 if (!accept("=")) {
                     throw "Expected =";
@@ -306,61 +312,59 @@ let bplus = (function() {
 
                 let rhs = expression();
 
-                return {
+                s = {
                     type: "ASSIGNMENT",
                     name: name,
                     expression: rhs 
                 };
             }  
             // [Re]assignment:
-            else if (accept("IDENTIFIER")) {
-                if (!accept("=")) {
-                    throw "Expected =";
+            else if (c.type === "IDENTIFIER") {
+                
+                let name = c.symbol;
+                advance();
+
+                if (accept("=")) {
+                    let rhs = expression();
+
+                    s = {
+                        type: "ASSIGNMENT",
+                        name: name,
+                        rhs: rhs
+                    };
+                }
+                else if (accept(":")) {
+                    s = {
+                        type: "LABEL",
+                        name: name
+                    };
+                }
+                else {
+                    throw `Unexpected ${c.symbol}`;
                 }
 
-                let rhs = expression();
-
-                return {
-                    type: "ASSIGNMENT",
-                    name: name,
-                    rhs: rhs
-                };
             }
             // Conditional:  
             else if (accept("if")) {
+
                 let condition = expression();
-
-                if (!accept("{")) {
-                    throw "Expected {";
-                }
-
                 let body = block();
 
-                if (!accept("}")) {
-                    throw "Expected }";
-                }
+                
 
-                return {
-                    type: "IF",
+                s = {
+                    type: "CONDITIONAL",
                     condition: condition,
                     body: body
                 };
             }
             // For loop:
             else if (accept("for")) {
+                
                 let condition = expression();
-                
-                if (!accept("{")) {
-                    throw "Expected {";
-                }
-
                 let body = block();
-                
-                if (!accept("{")) {
-                    throw "Expected }";
-                }
 
-                return { 
+                s = { 
                     type: "FOR",
                     condition: condition, 
                     body: body 
@@ -368,33 +372,36 @@ let bplus = (function() {
             }
             // While loop:
             else if (accept("while")) {
-                let condition = expression();
                 
-                if (!accept("{")) {
-                    throw "Expected {";
-                }
-
+                let condition = expression();
                 let body = block();
 
-                if (!accept("{")) {
-                    throw "Expected }";
-                }
-
-                return { 
+                s = { 
                     type: "WHILE",
                     condition: condition, 
                     body: body 
                 };
             }
+            else {
+                throw `Unexpected ${c.symbol}`;
+            }
+
+            separator();
+
+            return s;
         }
 
         // A block defines a list of statements.
-        function block() {            
+        function block() {
+
+            separator();           
             if (!accept("{")) {
                 throw "Expected {";
             }
+            separator();
+
             let statements = [];
-            while (c.symbol !== '}') {
+            while (!accept('}')) {
                 let s = statement();
                 statements.push(s);
             }
@@ -402,21 +409,24 @@ let bplus = (function() {
             return statements;
         }
 
+        // The separator is the symbol between statements, in this case
+        // statements are separated by newlines.
+        function separator() {
+            while (accept("NEWLINE")) {}
+        }
+
         // A program consists of a list of statements.
         function program() {
             accept("START");
 
             let statements = [];
-            /*
-            while (lookahead().symbol !== 'END') {
+            
+            while (!accept("END")) {
                 let s = statement();
                 statements.push(s);
             }
-            */
-            console.log(statements);
-
-            accept("END");
             
+            console.log(statements);
             return statements;
         }
 
