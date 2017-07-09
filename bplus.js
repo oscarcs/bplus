@@ -197,7 +197,7 @@ let bplus = (function() {
         }
 
         // Test whether the current symbol is of a particular type.
-        // If it is, advance.
+        // If it is, advance the position in the tokens.
         function accept(arg) {
             if (c.type === arg || c.symbol === arg) {
                 advance();
@@ -315,15 +315,17 @@ let bplus = (function() {
                 s = {
                     type: "ASSIGNMENT",
                     name: name,
-                    expression: rhs 
+                    rhs: rhs 
                 };
-            }  
-            // [Re]assignment:
+            }
+            // Two types of statements start with an identifier: a label, and
+            // a variable assignment.  
             else if (c.type === "IDENTIFIER") {
                 
                 let name = c.symbol;
                 advance();
 
+                // Variable assignment:
                 if (accept("=")) {
                     let rhs = expression();
 
@@ -333,6 +335,7 @@ let bplus = (function() {
                         rhs: rhs
                     };
                 }
+                // Label definition:
                 else if (accept(":")) {
                     s = {
                         type: "LABEL",
@@ -345,21 +348,50 @@ let bplus = (function() {
 
             }
             // Conditional:  
-            else if (accept("if")) {
+            else if (accept("IF")) {
 
                 let condition = expression();
                 let body = block();
 
-                
+                separator();
 
                 s = {
                     type: "CONDITIONAL",
-                    condition: condition,
-                    body: body
+                    conditions: [condition],
+                    bodies: [body]
                 };
+
+                // This is a state machine for if - else if - else blocks.
+                let elif = true;
+                while (elif) {
+                    if (accept("ELSE")) {
+                        // We've reached an else-if conditional:
+                        if (accept("IF")) {
+                            let condition = expression();
+                            let body = block();
+
+                            s.conditions.push(condition);
+                            s.bodies.push(body);
+                            
+                            separator();
+                        }
+                        // We've reached the terminating else block:
+                        else {
+                            let body = block();
+
+                            s.conditions.push({ type: "BOOLEAN", symbol: "true"});
+                            s.bodies.push(body);
+
+                            elif = false;
+                        } 
+                    }
+                    else {
+                        elif = false;
+                    }
+                }
             }
             // For loop:
-            else if (accept("for")) {
+            else if (accept("FOR")) {
                 
                 let condition = expression();
                 let body = block();
@@ -371,7 +403,7 @@ let bplus = (function() {
                 }; 
             }
             // While loop:
-            else if (accept("while")) {
+            else if (accept("WHILE")) {
                 
                 let condition = expression();
                 let body = block();
@@ -426,15 +458,17 @@ let bplus = (function() {
                 statements.push(s);
             }
             
-            console.log(statements);
             return statements;
         }
 
         // Begin parsing:
         advance();
-        let ast = program();
+        let statements = program();
 
-        return ast;
+        return {
+            type: "PROGRAM",
+            children: statements 
+        };
     }
 
     /**
@@ -442,6 +476,8 @@ let bplus = (function() {
      */
     function generate(ast) {
         let output = "";
+
+        debug(ast);
 
         return output;
     }
