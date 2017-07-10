@@ -163,13 +163,6 @@ let bplus = (function() {
 
         tokens.push({ symbol: "end", type: "END" });
 
-        for (i in tokens) {
-
-            var cur = tokens[i];
-            var next = tokens[i + 1];
-
-            debug("|" + cur.symbol, cur.type + "|");
-        }
         return tokens;
     }
 
@@ -183,6 +176,10 @@ let bplus = (function() {
      * e-climbing
      */
     function parse(tokens) {
+
+        for (let token of tokens) {
+            debug("|" + token.symbol, token.type + "|");
+        }
 
         let loc = -1;
         let c;
@@ -212,21 +209,26 @@ let bplus = (function() {
                 return true;
             }
             throw `Unexpected token ${arg}`;
-            //return false;
         }
 
         // Each binary operator has a precedence and associates either to the
         // left or to the right.
-        let operators = {
-            "+": { precedence: 1, associativity: 'left' },   
-            "-": { precedence: 1, associativity: 'left' },   
-            "*": { precedence: 2, associativity: 'left' },   
-            "/": { precedence: 2, associativity: 'left' },   
-            "==": { precedence: 4, associativity: 'left' },
-            ">": { precedence: 4, associativity: 'left' },
-            "<": { precedence: 4, associativity: 'left' },
-            ">=": { precedence: 4, associativity: 'left' },
-            "<=": { precedence: 4, associativity: 'left' },
+        let binaryOps = {
+            "==": { precedence: 3, associativity: 'left' },
+            ">": { precedence: 3, associativity: 'left' },
+            "<": { precedence: 3, associativity: 'left' },
+            ">=": { precedence: 3, associativity: 'left' },
+            "<=": { precedence: 3, associativity: 'left' },
+            "-": { precedence: 4, associativity: 'left' },   
+            "+": { precedence: 4, associativity: 'left' },   
+            "*": { precedence: 5, associativity: 'left' },   
+            "/": { precedence: 5, associativity: 'left' },   
+        };
+
+        let unaryOps = {
+            "+": { precedence: "6" },
+            "-": { precedence: "6" },
+            "!": { precedence: "6" }
         };
 
         // An 'atom' is the smallest constituent unit of an expression, i.e. 
@@ -240,9 +242,22 @@ let bplus = (function() {
                 }
                 return val;
             }
-            // Throw an error if there are two operators in a row:
-            else if (accept("OPERATOR")) {
-                throw "Expected an identifier or a number.";
+            // Handle unary prefix operators:
+            if (c.type === "OPERATOR") {
+                if (c.symbol in unaryOps) {
+                    let op = c.symbol;
+                    let prec = unaryOps[op].precedence;
+                    advance();
+                    let expr = expression(prec);
+                    return {
+                        type: "UNARY",
+                        operator: op,
+                        child: expr, 
+                    };
+                }
+                else {
+                    throw `Expected unary prefix operator.`;
+                }
             }
             // If the current token is actually an atom, return it:
             else if (c.type === "NUMBER" || c.type === "IDENTIFIER") {
@@ -269,7 +284,7 @@ let bplus = (function() {
                 // bound.
                 if (
                     c.type !== "OPERATOR" || 
-                    operators[c.symbol].precedence < minPrecedence
+                    binaryOps[c.symbol].precedence < minPrecedence
                 ) {    
                     break;
                 }
@@ -277,8 +292,8 @@ let bplus = (function() {
                 expect("OPERATOR");
                 
                 let op = c.symbol;
-                let prec = operators[c.symbol].precedence;
-                let assoc = operators[c.symbol].associativity;
+                let prec = binaryOps[c.symbol].precedence;
+                let assoc = binaryOps[c.symbol].associativity;
                 let nextMinPrecedence = assoc === "left" ? prec + 1 : prec;
 
                 advance();
@@ -286,7 +301,7 @@ let bplus = (function() {
 
                 // Create an AST node for this expression.
                 lhs = { 
-                    type: "EXPRESSION", 
+                    type: "BINARY", 
                     left: lhs, 
                     right: rhs, 
                     operator: op
@@ -353,8 +368,6 @@ let bplus = (function() {
                 let condition = expression();
                 let body = block();
 
-                separator();
-
                 s = {
                     type: "CONDITIONAL",
                     conditions: [condition],
@@ -368,18 +381,24 @@ let bplus = (function() {
                         // We've reached an else-if conditional:
                         if (accept("IF")) {
                             let condition = expression();
+
+                            if (condition === undefined) {
+                                throw 'Expected expression.';
+                            }
+
                             let body = block();
 
                             s.conditions.push(condition);
                             s.bodies.push(body);
-                            
-                            separator();
                         }
                         // We've reached the terminating else block:
                         else {
                             let body = block();
 
-                            s.conditions.push({ type: "BOOLEAN", symbol: "true"});
+                            s.conditions.push({
+                                type: "BOOLEAN", 
+                                symbol: "true"
+                            });
                             s.bodies.push(body);
 
                             elif = false;
@@ -414,11 +433,25 @@ let bplus = (function() {
                     body: body 
                 };
             }
+            // Print statement:
+            else if (accept("PRINT")) {
+                let child = expression();
+                s = {
+                    type: "PRINT",
+                    child: child
+                };
+            }
+            // Read statement.
+            else if (accept("READ")) {
+                s = {
+                    type: "READ"
+                };
+            }
             else {
                 throw `Unexpected ${c.symbol}`;
             }
 
-            separator();
+            separator(true);
 
             return s;
         }
@@ -443,8 +476,15 @@ let bplus = (function() {
 
         // The separator is the symbol between statements, in this case
         // statements are separated by newlines.
-        function separator() {
-            while (accept("NEWLINE")) {}
+        function separator(enforce) {
+            numSeparators = 0;
+            while (accept("NEWLINE")) {
+                numSeparators++;
+            }
+
+            if (enforce === true && numSeparators === 0 && c.type !== "END") {
+                throw `Expected statement separator after ${c.symbol}`;
+            }
         }
 
         // A program consists of a list of statements.
@@ -452,7 +492,7 @@ let bplus = (function() {
             accept("START");
 
             let statements = [];
-            
+            separator();
             while (!accept("END")) {
                 let s = statement();
                 statements.push(s);

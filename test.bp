@@ -1,13 +1,13 @@
-let x = 3
-x = 4 + 5 * 1
-
-
 if x == 4 {
 
+} else {
+    while x == 4 {
+        
+    }
 }
-else if x == 5 {
 
-}
-else {
-    x = 4
-}
+
+print x
+
+
+
