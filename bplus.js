@@ -13,10 +13,21 @@ let bplus = (function() {
         }
     }
 
+    function error(token, message) {
+
+    }
+
     /**
      * Produce tokens using the program text. 
      */
     function lex(program) {
+
+        // Replace Windows-style line endings with Unix ones for simplicity.
+        program = program.replace(/\r\n/g, '\n');
+
+        // Track the line position of each token for error-reporting purposes.
+        let lineNumber = 1;
+
         let tokens = [{ symbol: "start", type: "START" }];
                 
         let isAlpha = x => (
@@ -33,7 +44,7 @@ let bplus = (function() {
         );   
         
         let isNewline = x => (
-            x === "\r" || x === "\n"
+            (x === "\r" || x === "\n")
         );
 
         let keywords = [
@@ -70,7 +81,8 @@ let bplus = (function() {
         function token(symbol, type) {
             tokens.push({
                 symbol: symbol,
-                type: type
+                type: type,
+                line: lineNumber
             });
         }
 
@@ -82,6 +94,8 @@ let bplus = (function() {
             return c;
         } 
 
+        // With the grammar of this language, we need a single character of
+        // lookahead to differentiate tokens. 
         function lookahead() {
             return program.charAt(loc + 1);
         }
@@ -89,9 +103,9 @@ let bplus = (function() {
         // Set the lexer to the initial state.
         advance();
 
-        let iter = 0;
-        while (loc < program.length && iter < program.length) {
-            iter++;
+        // In the main loop of the lexer, we iterate through every character 
+        // in the input, producing tokens as we go.
+        while (loc < program.length) {
 
             // Skip comments:
             if (c === "/" && lookahead() === "/") {
@@ -111,10 +125,8 @@ let bplus = (function() {
             // Skip newlines:
             else if (isNewline(c)) {
                 advance();
-                if (isNewline(c)) {
-                    advance();
-                }
                 token("newline", "NEWLINE");
+                lineNumber++;
             }
 
             // Keywords and identifiers:
@@ -176,10 +188,12 @@ let bplus = (function() {
      * e-climbing
      */
     function parse(tokens) {
-
+        /*
         for (let token of tokens) {
             debug("|" + token.symbol, token.type + "|");
         }
+        */
+        debug(tokens);
 
         let loc = -1;
         let c;
@@ -259,7 +273,7 @@ let bplus = (function() {
                     throw `Expected unary prefix operator.`;
                 }
             }
-            // If the current token is actually an atom, return it:
+            // If the current token is actually an atom, just return it:
             else if (c.type === "NUMBER" || c.type === "IDENTIFIER") {
                 let ret = c;
                 advance();
@@ -311,8 +325,10 @@ let bplus = (function() {
             return lhs;
         }
 
+        // A statement is the building-block of the language. They are 
+        // terminated with one or more 'separators', i.e. newlines
         function statement() {
-
+            // The statement node to be returned:
             var s;
 
             // Variable definition:
@@ -362,7 +378,8 @@ let bplus = (function() {
                 }
 
             }
-            // Conditional:  
+            // A conditional consists of an if-statement with optional 
+            // if-else-statements and an optional else-statement:
             else if (accept("IF")) {
 
                 let condition = expression();
@@ -374,7 +391,7 @@ let bplus = (function() {
                     bodies: [body]
                 };
 
-                // This is a state machine for if - else if - else blocks.
+                // This is a state machine for if/else if/else blocks.
                 let elif = true;
                 while (elif) {
                     if (accept("ELSE")) {
@@ -395,6 +412,8 @@ let bplus = (function() {
                         else {
                             let body = block();
 
+                            // An else-statement is unconditional, so we set 
+                            // the conditional to true:
                             s.conditions.push({
                                 type: "BOOLEAN", 
                                 symbol: "true"
