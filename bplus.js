@@ -13,18 +13,10 @@ let bplus = (function() {
         }
     }
 
-    function error(token, message) {
-
-    }
-
     /**
      * Produce tokens using the program text. 
      */
     function lex(program) {
-
-        // Replace Windows-style line endings with Unix ones for simplicity.
-        program = program.replace(/\r\n/g, '\n');
-
         // Track the line position of each token for error-reporting purposes.
         let lineNumber = 1;
 
@@ -188,11 +180,6 @@ let bplus = (function() {
      * e-climbing
      */
     function parse(tokens) {
-        /*
-        for (let token of tokens) {
-            debug("|" + token.symbol, token.type + "|");
-        }
-        */
         debug(tokens);
 
         let loc = -1;
@@ -222,7 +209,7 @@ let bplus = (function() {
             if (c.type === arg || c.symbol === arg) {
                 return true;
             }
-            throw `Unexpected token ${arg}`;
+            error(c, `Unexpected token ${arg}`);
         }
 
         // Each binary operator has a precedence and associates either to the
@@ -252,7 +239,10 @@ let bplus = (function() {
             if (accept("(")) {
                 let val = expression(1);
                 if (!accept(")")) {
-                    throw "Expected )";
+                    throw {
+                        token: c,
+                        message: "Expected )"
+                    };
                 }
                 return val;
             }
@@ -270,7 +260,10 @@ let bplus = (function() {
                     };
                 }
                 else {
-                    throw `Expected unary prefix operator.`;
+                    throw {
+                        token: c,
+                        message: `Expected unary prefix operator.`
+                    };
                 }
             }
             // If the current token is actually an atom, just return it:
@@ -338,7 +331,10 @@ let bplus = (function() {
                 advance();
 
                 if (!accept("=")) {
-                    throw "Expected =";
+                    throw {
+                        token: c,
+                        message: "Expected =",
+                    };
                 }
 
                 let rhs = expression();
@@ -374,7 +370,10 @@ let bplus = (function() {
                     };
                 }
                 else {
-                    throw `Unexpected ${c.symbol}`;
+                    throw {
+                        token: c,
+                        message: `Unexpected ${c.symbol}`
+                    };
                 }
 
             }
@@ -400,7 +399,10 @@ let bplus = (function() {
                             let condition = expression();
 
                             if (condition === undefined) {
-                                throw 'Expected expression.';
+                                throw {
+                                    token: c,
+                                    message: 'Expected expression.'
+                                };
                             }
 
                             let body = block();
@@ -467,7 +469,10 @@ let bplus = (function() {
                 };
             }
             else {
-                throw `Unexpected ${c.symbol}`;
+                throw {
+                    token: c,
+                    message: `Unexpected ${c.symbol}`
+                };
             }
 
             separator(true);
@@ -480,7 +485,10 @@ let bplus = (function() {
 
             separator();           
             if (!accept("{")) {
-                throw "Expected {";
+                throw {
+                    token: c,
+                    message: "Expected {"
+                };
             }
             separator();
 
@@ -502,7 +510,10 @@ let bplus = (function() {
             }
 
             if (enforce === true && numSeparators === 0 && c.type !== "END") {
-                throw `Expected statement separator after ${c.symbol}`;
+                throw {
+                    token: c,
+                    message: `Expected statement separator before '${c.symbol}'`
+                };
             }
         }
 
@@ -541,10 +552,37 @@ let bplus = (function() {
         return output;
     }
 
+    function printError(token, message, program) {
+
+        let lineAbove = program.split("\n")[token.line - 2];
+        let line = program.split("\n")[token.line - 1];
+        let lineBelow = program.split("\n")[token.line];
+
+        let msg = [
+            `Error on line ${token.line}:`,
+            `          ${lineAbove}`,
+            `   --->   ${line}`,
+            `          ${lineBelow}`,
+            `${message}`
+        ].join("\n");
+
+        console.error(msg);
+    }
+
     function compile(program) {
-        let tokens = lex(program);
-        let ast = parse(tokens);
-        let output = generate(ast);
+
+        // Replace Windows-style line endings with Unix ones for simplicity.
+        program = program.replace(/\r\n/g, '\n');
+
+        let tokens, ast, output;
+        try {
+            tokens = lex(program);
+            ast = parse(tokens);
+            output = generate(ast);
+        }
+        catch (e) {
+            printError(e.token, e.message, program);
+        }
         return output;
     }
 
