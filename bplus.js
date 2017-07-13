@@ -241,7 +241,7 @@ let bplus = (function() {
                 if (!accept(")")) {
                     throw {
                         token: c,
-                        message: "Expected )"
+                        message: "Unmatched '(', expected ')'"
                     };
                 }
                 return val;
@@ -389,6 +389,8 @@ let bplus = (function() {
                     conditions: [condition],
                     bodies: [body]
                 };
+
+                separator();
 
                 // This is a state machine for if/else if/else blocks.
                 let elif = true;
@@ -554,15 +556,19 @@ let bplus = (function() {
 
     function printError(token, message, program) {
 
-        let lineAbove = program.split("\n")[token.line - 2];
-        let line = program.split("\n")[token.line - 1];
-        let lineBelow = program.split("\n")[token.line];
+        let lines = [];
+        lines[0] = program.split("\n")[token.line - 2];
+        lines[1] = program.split("\n")[token.line - 1];
+        lines[2] = program.split("\n")[token.line];
+
+        // Get rid of undefined values; replace them with ''
+        lines = lines.map(x => x = (x === undefined ? '' : x));
 
         let msg = [
             `Error on line ${token.line}:`,
-            `          ${lineAbove}`,
-            `   --->   ${line}`,
-            `          ${lineBelow}`,
+            `          ${lines[0]}`,
+            `   --->   ${lines[1]}`,
+            `          ${lines[2]}`,
             `${message}`
         ].join("\n");
 
