@@ -1,2 +1,11 @@
-let x = 4
-x = 5 + 3
+let y = 10
+
+for a = 0..6
+{
+    for x = 0..y
+    {
+        print x * x - a
+    }
+    a = a + 1
+}
+

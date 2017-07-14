@@ -184,6 +184,7 @@ let bplus = (function() {
 
         // Keep a track of which variables have been defined.
         let variables = [];
+        let isDefined = x => variables.indexOf(x) !== -1; 
 
         let loc = -1;
         let c;
@@ -277,7 +278,7 @@ let bplus = (function() {
             else if (c.type === "IDENTIFIER") {
                 let ident = c;
                 
-                if (variables.indexOf(c.symbol) === -1) {
+                if (!isDefined(c.symbol)) {
                     throw {
                         token: c,
                         message: `The identifier '${c.symbol}' is not defined.`
@@ -342,7 +343,7 @@ let bplus = (function() {
             // Variable definition:
             if (accept("LET")) {
 
-                let name = c.symbol;
+                let name = c;
                 advance();
 
                 if (!accept("=")) {
@@ -354,11 +355,19 @@ let bplus = (function() {
 
                 let rhs = expression();
 
-                variables.push(name);
+                if (!isDefined(name.symbol)) {
+                    variables.push(name.symbol);
+                }
+                else {
+                    throw {
+                        token: name,
+                        message: `Variable ${name.symbol} is already defined`
+                    };
+                }
 
                 s = {
                     type: "ASSIGNMENT",
-                    name: name,
+                    name: name.symbol,
                     rhs: rhs 
                 };
             }
@@ -434,6 +443,7 @@ let bplus = (function() {
                             }
 
                             let body = block();
+                            separator();
 
                             s.conditions.push(condition);
                             s.bodies.push(body);
@@ -445,8 +455,8 @@ let bplus = (function() {
                             // An else-statement is unconditional, so we set 
                             // the conditional to true:
                             s.conditions.push({
-                                type: "BOOLEAN", 
-                                symbol: "true"
+                                type: "NUMBER", 
+                                symbol: "1"
                             });
                             s.bodies.push(body);
 
@@ -461,12 +471,30 @@ let bplus = (function() {
             // For loop:
             else if (accept("FOR")) {
                 
-                let condition = expression();
+                // Parse the variable that will be incremented:
+                let name = c;
+
+                if (!isDefined(name)) {
+                    variables.push(name.symbol);
+                }
+
+                advance();
+                accept("=");
+
+
+                // Start from the value of one expression and continue 
+                // iterating upwards until the value of 'end' is reached.
+                let start = expression();
+                advance("..");
+                let end = expression();
+
                 let body = block();
 
                 s = { 
                     type: "FOR",
-                    condition: condition, 
+                    name: name.symbol,
+                    start: start,
+                    end: end, 
                     body: body 
                 }; 
             }
@@ -490,10 +518,20 @@ let bplus = (function() {
                     child: child
                 };
             }
-            // Read statement.
+            // Read statement:
             else if (accept("READ")) {
                 s = {
                     type: "READ"
+                };
+            }
+            // Goto statement:
+            else if (accept("goto")) {
+                let name = c.symbol; 
+                advance();
+
+                s = {
+                    type: "GOTO",
+                    name: name
                 };
             }
             else {
@@ -588,18 +626,142 @@ let bplus = (function() {
         function generate() {
             let body = [];
 
+            // Keep track of which variables have been defined:
+            let defined = [];
+            let isDefined = n => defined.indexOf(n) !== -1;
+
+            // Operator tables:
+
+            // Operators that have a direct analogue in C:
+            let verbatimOp = ['+', '-', '/', '*', '==', '>=', '<=', '>', '<'];
+
             function generateNode(node) {
+
                 switch(node.type) {
                 
                     case "PROGRAM":
                         for (child of node.children) {
-                            body.push(generateNode(child));
+                            generateNode(child);
                         }
 
                         break;
 
+                    /*
+                        Statement-level constructs:
+                    */
+                    
+                    case "ASSIGNMENT":
+                        if (!isDefined(node.name)) {
+                            body.push(`int ${node.name};`);
+                            defined.push(node.name);
+                        }
+
+                        let rhs = generateNode(node.rhs);
+
+                        body.push(`${node.name} = ${rhs};`);
+
+                        break;
+
+                    case "WHILE":
+                        let whileCond = generateNode(node.condition);
+
+                        body.push(`while (${whileCond}) {`);
+                        for (child of node.body) {
+                            generateNode(child);
+                        }
+                        body.push(`}`);
+
+                        break;
+
+                    case "FOR":
+                        
+                        if (!isDefined(node.name)) {
+                            body.push(`int ${node.name};`);
+                        }
+
+                        let start = generateNode(node.start);
+                        let end = generateNode(node.end);
+
+                        body.push([`for (${node.name} = ${start};`,
+                            `${node.name} < ${end};`,
+                            `${node.name}++) {`]
+                        .join(" "));
+
+                        for (child of node.body) {
+                            generateNode(child);
+                        }
+                        body.push(`}`);
+
+                        break;
+
+                    case "CONDITIONAL":
+
+                        // Get the leading condition:
+                        let ifCond = generateNode(node.conditions[0]);
+                        
+                        // Generate the body of the if statement:
+                        body.push(`if (${ifCond}) {`);
+                        for (child of node.bodies[0]) {
+                            generateNode(child);
+                        }
+                        body.push(`}`)
+
+                        // Generate 'else if' blocks:
+                        for (let i = 1; i < node.conditions.length; i++) {
+                            // Get the condition:
+                            let elseIfCond = generateNode(node.conditions[i]);
+                            
+                            // Generate the body statements:
+                            body.push(`else if (${elseIfCond}) {`);
+                            for (child of node.bodies[i]) {
+                                generateNode(child);
+                            }
+                            body.push(`}`);
+                        }
+
+                        break;
+
+                    case "PRINT":
+
+                        let printExpr = generateNode(node.child);
+                        body.push(`printf("%i\\n", ${printExpr});`);
+
+                        break;
+
+                    case "LABEL":
+                        body.push(`${node.name}:`);
+                        break;
+
+                    case "GOTO":
+                        body.push(`goto ${node.name};`);
+                        break;
+
+                    
+                    /*
+                        Expression-level constructs:
+                    */
+
+                    case "BINARY":
+                        let left = generateNode(node.left); 
+                        let right = generateNode(node.right);
+
+                        let op;
+                        if (verbatimOp.indexOf(node.operator) !== -1) {
+                            op = node.operator;
+                        }
+                        
+                        return `(${left} ${op} ${right})`;
+
+                        break;
+
+                    case "NUMBER":
+                        return node.symbol;
+
+                    case "IDENTIFIER":
+                        return node.symbol;
+
                     default:
-                        body.push("");
+                        // body.push("");
                 }
             }
 
@@ -610,8 +772,7 @@ let bplus = (function() {
 
         output = [
             headers(),
-            `   printf("Hi, World!");`,
-            `   ${generate()}`,
+            `\t${generate()}`,
             `}`
         ].join("\n");
 
@@ -658,7 +819,7 @@ let bplus = (function() {
         // Handle errors. Errors that are in the appropriate format will be
         // printed as proper compiler errors.
         catch (e) {
-            if (e.message) {
+            if (typeof e.token !== 'undefined') {
                 printError(e.token, e.message, program);
             }
             else {
@@ -691,12 +852,11 @@ if (env === "node") {
         // Define a print function as a callback to exec():
         let print = function (error, stdout, stderr) {
             console.log(stdout);
-            //console.log(stderr);
+            console.log(stderr);
         };
 
         // Invoke the C compiler and the binary:
-        exec("cc -o out out.c", print);
-        exec("./out", print);
+        exec("cc -o out out.c && ./out", print);
     }
 }
 // If running in a browser:
