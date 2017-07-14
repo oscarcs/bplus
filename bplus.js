@@ -182,6 +182,9 @@ let bplus = (function() {
     function parse(tokens) {
         debug(tokens);
 
+        // Keep a track of which variables have been defined.
+        let variables = [];
+
         let loc = -1;
         let c;
         function advance() {
@@ -266,11 +269,23 @@ let bplus = (function() {
                     };
                 }
             }
-            // If the current token is actually an atom, just return it:
-            else if (c.type === "NUMBER" || c.type === "IDENTIFIER") {
-                let ret = c;
+            else if (c.type === "NUMBER") {
+                let number = c;
                 advance();
-                return ret;
+                return number;
+            }
+            else if (c.type === "IDENTIFIER") {
+                let ident = c;
+                
+                if (variables.indexOf(c.symbol) === -1) {
+                    throw {
+                        token: c,
+                        message: `The identifier '${c.symbol}' is not defined.`
+                    };
+                }
+                
+                advance();
+                return ident;
             }
         }
 
@@ -339,6 +354,8 @@ let bplus = (function() {
 
                 let rhs = expression();
 
+                variables.push(name);
+
                 s = {
                     type: "ASSIGNMENT",
                     name: name,
@@ -349,16 +366,25 @@ let bplus = (function() {
             // a variable assignment.  
             else if (c.type === "IDENTIFIER") {
                 
-                let name = c.symbol;
+                let name = c;
                 advance();
 
                 // Variable assignment:
                 if (accept("=")) {
+
+                    if (variables.indexOf(name.symbol) === -1) {
+                        throw {
+                            token: name,
+                            message: `The identifier '${name.symbol}' is ` + 
+                            `not defined.`
+                        };
+                    }
+
                     let rhs = expression();
 
                     s = {
                         type: "ASSIGNMENT",
-                        name: name,
+                        name: name.symbol,
                         rhs: rhs
                     };
                 }
@@ -366,7 +392,7 @@ let bplus = (function() {
                 else if (accept(":")) {
                     s = {
                         type: "LABEL",
-                        name: name
+                        name: name.symbol
                     };
                 }
                 else {
@@ -625,11 +651,11 @@ let bplus = (function() {
             output = generate(ast);
         }
         catch (e) {
-                console.error(e);
             if (e.message) {
-                //printError(e.token, e.message, program);
+                printError(e.token, e.message, program);
             }
             else {
+                console.error(e);
             }
         }
         return output;
