@@ -1,18 +1,5 @@
-if x == 4
-{
-
-} 
-else
-{
-    while x == 4
-    {
-        
-    }
-}
-
-
-print x 
 let x = 4
+x = 5
 
 
 

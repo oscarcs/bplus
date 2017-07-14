@@ -551,11 +551,49 @@ let bplus = (function() {
 
         debug(ast);
 
+        function headers() {
+            return [
+                `#include <stdio.h>`,
+                ``,
+                `int main() {`
+            ].join("\n");
+        }
+
+        function generate() {
+            let body = [];
+
+            function generateNode(node) {
+                switch(node.type) {
+                
+                    case "PROGRAM":
+                        for (child of node.children) {
+                            body.push(generateNode(child));
+                        }
+
+                        break;
+
+                    default:
+                        body.push("");
+                }
+            }
+
+            generateNode(ast);
+            body = body.join("\n\t");
+            return body;
+        }
+
+        output = [
+            headers(),
+            `   printf("Hi, World!");`,
+            `   ${generate()}`,
+            `}`
+        ].join("\n");
+
         return output;
     }
 
     function printError(token, message, program) {
-
+        
         let lines = [];
         lines[0] = program.split("\n")[token.line - 2];
         lines[1] = program.split("\n")[token.line - 1];
@@ -587,7 +625,12 @@ let bplus = (function() {
             output = generate(ast);
         }
         catch (e) {
-            printError(e.token, e.message, program);
+                console.error(e);
+            if (e.message) {
+                //printError(e.token, e.message, program);
+            }
+            else {
+            }
         }
         return output;
     }
@@ -595,11 +638,35 @@ let bplus = (function() {
     return compile;
 })();
 
-function reqListener() {
-    bplus(this.responseText);
-}
+const env = typeof window === 'undefined' ? "node" : "browser";
 
-var oReq = new XMLHttpRequest();
-oReq.addEventListener("load", reqListener);
-oReq.open("GET", "test.bp");
-oReq.send();
+// If running under NodeJS:
+if (env === "node") {
+    let fs = require('fs');
+    let exec = require('child_process').exec;
+
+    let program = fs.readFileSync('./test.bp', 'utf8');
+    let output = bplus(program);
+
+    // Write out the generated code:
+    fs.writeFileSync('./out.c', output);
+
+    // Use the C compiler to compile generated code:
+    let puts = function (error, stdout, stderr) {
+        console.log(stdout);
+        //console.log(stderr);
+    };
+    exec("cc -o out out.c", puts);
+    exec("./out", puts);
+}
+// If running in a browser:
+else {
+    function reqListener() {
+        bplus(this.responseText);
+    }
+
+    let oReq = new XMLHttpRequest();
+    oReq.addEventListener("load", reqListener);
+    oReq.open("GET", "test.bp");
+    oReq.send();
+}
