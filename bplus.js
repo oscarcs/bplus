@@ -639,17 +639,24 @@ let bplus = (function() {
         console.error(msg);
     }
 
-    function compile(program) {
+    function compile(program, debug) {
 
+        if (typeof debug !== 'undefined') {
+            DEBUG = debug;
+        }
+        
         // Replace Windows-style line endings with Unix ones for simplicity.
         program = program.replace(/\r\n/g, '\n');
 
+        // Perform the actual compilation:
         let tokens, ast, output;
         try {
             tokens = lex(program);
             ast = parse(tokens);
             output = generate(ast);
         }
+        // Handle errors. Errors that are in the appropriate format will be
+        // printed as proper compiler errors.
         catch (e) {
             if (e.message) {
                 printError(e.token, e.message, program);
@@ -672,27 +679,34 @@ if (env === "node") {
     let exec = require('child_process').exec;
 
     let program = fs.readFileSync('./test.bp', 'utf8');
-    let output = bplus(program);
+    let output = bplus(program, false);
 
-    // Write out the generated code:
-    fs.writeFileSync('./out.c', output);
+    // If there were no errors duing compilation, we output the generated code
+    // into a C file and compile it:
+    if (typeof output !== 'undefined') {
 
-    // Use the C compiler to compile generated code:
-    let puts = function (error, stdout, stderr) {
-        console.log(stdout);
-        //console.log(stderr);
-    };
-    exec("cc -o out out.c", puts);
-    exec("./out", puts);
+        // Write out the generated code:
+        fs.writeFileSync('./out.c', output);
+
+        // Define a print function as a callback to exec():
+        let print = function (error, stdout, stderr) {
+            console.log(stdout);
+            //console.log(stderr);
+        };
+
+        // Invoke the C compiler and the binary:
+        exec("cc -o out out.c", print);
+        exec("./out", print);
+    }
 }
 // If running in a browser:
 else {
-    function reqListener() {
+    function listener() {
         bplus(this.responseText);
     }
 
-    let oReq = new XMLHttpRequest();
-    oReq.addEventListener("load", reqListener);
-    oReq.open("GET", "test.bp");
-    oReq.send();
+    let request = new XMLHttpRequest();
+    request.addEventListener("load", listener);
+    request.open("GET", "test.bp");
+    request.send();
 }
