@@ -182,7 +182,8 @@ let bplus = (function() {
     function parse(tokens) {
         debug(tokens);
 
-        // Keep a track of which variables have been defined.
+        // Keep a track of which variables have been defined. This is a simple 
+        // version of a symbol table, albeit one that doesn't track scope:
         let variables = [];
         let isDefined = x => variables.indexOf(x) !== -1; 
 
@@ -231,9 +232,9 @@ let bplus = (function() {
         };
 
         let unaryOps = {
-            "+": { precedence: "6" },
-            "-": { precedence: "6" },
-            "!": { precedence: "6" }
+            "+": { precedence: 6 },
+            "-": { precedence: 6 },
+            "!": { precedence: 6 }
         };
 
         // An 'atom' is the smallest constituent unit of an expression, i.e. 
@@ -378,10 +379,11 @@ let bplus = (function() {
                 let name = c;
                 advance();
 
-                // Variable assignment:
+                // Assign an expression to an identifier that has already been 
+                // defined. 
                 if (accept("=")) {
 
-                    if (variables.indexOf(name.symbol) === -1) {
+                    if (!isDefined(name.symbol)) {
                         throw {
                             token: name,
                             message: `The identifier '${name.symbol}' is ` + 
@@ -474,13 +476,14 @@ let bplus = (function() {
                 // Parse the variable that will be incremented:
                 let name = c;
 
+                // If the variable name isn't defined, define it:
                 if (!isDefined(name)) {
                     variables.push(name.symbol);
                 }
 
                 advance();
-                accept("=");
 
+                accept("=");
 
                 // Start from the value of one expression and continue 
                 // iterating upwards until the value of 'end' is reached.
@@ -640,7 +643,7 @@ let bplus = (function() {
                 switch(node.type) {
                 
                     case "PROGRAM":
-                        for (child of node.children) {
+                        for (let child of node.children) {
                             generateNode(child);
                         }
 
@@ -666,7 +669,7 @@ let bplus = (function() {
                         let whileCond = generateNode(node.condition);
 
                         body.push(`while (${whileCond}) {`);
-                        for (child of node.body) {
+                        for (let child of node.body) {
                             generateNode(child);
                         }
                         body.push(`}`);
@@ -679,15 +682,18 @@ let bplus = (function() {
                             body.push(`int ${node.name};`);
                         }
 
+                        // Start and end are expressions containing values to
+                        // loop between.
                         let start = generateNode(node.start);
                         let end = generateNode(node.end);
 
+                        // Generate the three for loop statements:
                         body.push([`for (${node.name} = ${start};`,
                             `${node.name} < ${end};`,
                             `${node.name}++) {`]
                         .join(" "));
 
-                        for (child of node.body) {
+                        for (let child of node.body) {
                             generateNode(child);
                         }
                         body.push(`}`);
@@ -701,19 +707,21 @@ let bplus = (function() {
                         
                         // Generate the body of the if statement:
                         body.push(`if (${ifCond}) {`);
-                        for (child of node.bodies[0]) {
+                        for (let child of node.bodies[0]) {
                             generateNode(child);
                         }
                         body.push(`}`)
 
-                        // Generate 'else if' blocks:
+                        // Generate 'else if' blocks. In lieu of an else block,
+                        // which would make parsing more difficult, we add an
+                        // 'else if (1)'.
                         for (let i = 1; i < node.conditions.length; i++) {
                             // Get the condition:
                             let elseIfCond = generateNode(node.conditions[i]);
                             
                             // Generate the body statements:
                             body.push(`else if (${elseIfCond}) {`);
-                            for (child of node.bodies[i]) {
+                            for (let child of node.bodies[i]) {
                                 generateNode(child);
                             }
                             body.push(`}`);
@@ -722,10 +730,8 @@ let bplus = (function() {
                         break;
 
                     case "PRINT":
-
                         let printExpr = generateNode(node.child);
                         body.push(`printf("%i\\n", ${printExpr});`);
-
                         break;
 
                     case "LABEL":
@@ -741,16 +747,32 @@ let bplus = (function() {
                         Expression-level constructs:
                     */
 
+                    case "UNARY":
+                        let child = generateNode(node.child);
+
+                        let unaryOp;
+                        // Check if there is a directly equivalent operator in
+                        // C.
+                        if (verbatimOp.indexOf(node.operator) !== -1) {
+                            unaryOp = node.operator;
+                        }
+
+                        return `(${unaryOp}${child})`;
+
+                        break;
+
                     case "BINARY":
                         let left = generateNode(node.left); 
                         let right = generateNode(node.right);
 
-                        let op;
+                        let binaryOp;
+                        // Check if there is a directly equivalent operator in
+                        // C.
                         if (verbatimOp.indexOf(node.operator) !== -1) {
-                            op = node.operator;
+                            binaryOp = node.operator;
                         }
                         
-                        return `(${left} ${op} ${right})`;
+                        return `(${left} ${binaryOp} ${right})`;
 
                         break;
 
